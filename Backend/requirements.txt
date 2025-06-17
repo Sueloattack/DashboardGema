@@ -1,0 +1,8 @@
+Flask
+flask-cors
+polars
+pandas
+openpyxl 
+mysql-connector-python
+python-dotenv
+xlsxwriter 
