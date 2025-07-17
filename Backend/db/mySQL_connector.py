@@ -1,10 +1,14 @@
-# db/database_connector.py
+# db/mySQL_connector.py
 import mysql.connector
 from mysql.connector import Error
 import os
+from config import settings
 
-def obtener_connection_db():
-    """Crea y devuelve un objeto de conexión a la base de datos."""
+def _obtener_connection_db():
+    """
+    Función privada para crear y devolver un objeto de conexión a la base de datos.
+    Reutiliza la lógica de conexión para mantener el código limpio.
+    """
     try:
         connection = mysql.connector.connect(
             host=os.getenv('DB_HOST'),
@@ -19,75 +23,79 @@ def obtener_connection_db():
         print(f"Error al conectar a MySQL: {e}")
         return None
 
-def obtener_datos_glosas(columnas_a_obtener):
+def obtener_datos_glosas(fecha_inicio: str = None, fecha_fin: str = None) -> tuple:
     """
-    Obtiene datos de la tabla 'gema' para las columnas especificadas.
-    
-    Argumentos:
-        columnas_a_obtener (list): Una lista de nombres de columnas que se desean seleccionar.
-        
-    Retorna:
-        tuple: (datos, mensaje_error)
-               - datos (list of dict): Los registros obtenidos de la base de datos.
-               - mensaje_error (str o None): Un mensaje de error si ocurre alguna falla.
+    Obtiene datos uniendo 'glo_det' (detalle) con 'glo_cab_test' (cabecera).
+    Filtra por rango de fechas en 'fecha_gl' de forma segura y eficiente.
     """
-    connection = obtener_connection_db()
+    connection = _obtener_connection_db()
     if not connection:
         return None, "Fallo al obtener la conexión a la base de datos."
 
     cursor = None
     try:
-        # Preparamos la consulta SQL de forma segura para evitar inyección SQL,
-        # aunque aquí solo usamos nombres de columnas controlados por nosotros.
-        columnas_str = ", ".join([f"`{col}`" for col in columnas_a_obtener])
-        consulta = f"SELECT {columnas_str} FROM gema;"
-        
-        # Usamos un cursor en modo diccionario para obtener {columna: valor},
-        # lo cual es más manejable que trabajar con tuplas.
+        # Consulta SQL con INNER JOIN y alias para las tablas (c=cabecera, d=detalle)
+        # Seleccionamos explícitamente las columnas para evitar ambigüedad (ej. gl_docn)
+        # y para renombrar columnas con espacios como 'fecha gl' a 'fecha_gl'.
+        query = """
+            SELECT
+                c.fechanotificacion, c.tipo, c.nom_entidad, c.fc_serie, c.fc_docn, c.saldocartera,
+                d.fecha_gl,
+                d.gl_docn,
+                d.estatus1,
+                d.vr_glosa,
+                d.freg,
+                d.gr_docn,
+                d.fecha_rep
+            FROM
+                glo_det d
+            INNER JOIN
+                glo_cab_test c ON d.gl_docn = c.gl_docn
+        """
+        params = []
+
+        if fecha_inicio and fecha_fin:
+            # Añadir la cláusula WHERE usando placeholders para seguridad (anti SQL Injection)
+            query += f" WHERE c.`{settings.COL_FECHA_NOTIFICACION}` BETWEEN %s AND %s"
+            # Los parámetros se añaden a una lista que se pasará a cursor.execute()
+            params.extend([f"{fecha_inicio} 00:00:00", f"{fecha_fin} 23:59:59"])
+
         cursor = connection.cursor(dictionary=True)
-        cursor.execute(consulta)
+        print("Ejecutando consulta SQL con JOIN y de forma segura...")
+        cursor.execute(query, tuple(params)) # El conector escapa los valores en 'params'
         
-        # fetchall() devuelve una lista de diccionarios con los resultados
         registros = cursor.fetchall()
-        
-        return registros, None  # Retorna los datos y ningún error
-    
+        return registros, None
     except Error as e:
-        print(f"Error al ejecutar la consulta de datos: {e}")
+        print(f"Error al ejecutar la consulta JOIN: {e}")
         return None, str(e)
-    
     finally:
-        if cursor:
-            cursor.close()
-        if connection.is_connected():
-            connection.close()
+        if cursor: cursor.close()
+        if connection and connection.is_connected(): connection.close()
 
-def test_db_query():
+def obtener_rango_fechas() -> tuple:
     """
-    Ejecuta una consulta de prueba para contar las filas en la tabla 'gema'.
-    Devuelve el conteo de filas o un mensaje de error.
+    Obtiene el rango de fechas de la columna de objeción, ahora apuntando a 'glo_det'.
     """
-    connection = obtener_connection_db()
-    if not connection:
-        return None, "Fallo al obtener la conexión a la base de datos."
+    connection = _obtener_connection_db()
+    if not connection: return None, "Fallo al obtener la conexión."
 
     cursor = None
     try:
-        cursor = connection.cursor()
-        query = "SELECT COUNT(id_gema) FROM gema;"
+        # La consulta ahora apunta a la tabla de detalle (glo_det)
+        query = f"SELECT MIN(`{settings.COL_FECHA_NOTIFICACION}`) AS fecha_min, MAX(`{settings.COL_FECHA_NOTIFICACION}`) AS fecha_max FROM glo_cab_test;"
+        cursor = connection.cursor(dictionary=True)
         cursor.execute(query)
-        # fetchone() devuelve una tupla, por ejemplo, (123,)
         result = cursor.fetchone()
-        row_count = result[0] if result else 0
-        return row_count, None  # Retorna el conteo y ningún error
-    except Error as e:
-        print(f"Error al ejecutar la consulta: {e}")
-        return None, str(e)  # Retorna nada y el mensaje de error
-    finally:
-        # Asegurarse de cerrar el cursor y la conexión
-        if cursor:
-            cursor.close()
-        if connection.is_connected():
-            connection.close()
+        
+        if result and result.get('fecha_min') is not None:
+            return result, None
+        else:
+            return {"fecha_min": None, "fecha_max": None}, "No se encontraron fechas en la tabla."
             
-
+    except Error as e:
+        print(f"Error al obtener el rango de fechas: {e}")
+        return None, str(e)
+    finally:
+        if cursor: cursor.close()
+        if connection and connection.is_connected(): connection.close()
