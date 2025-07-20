@@ -8,6 +8,7 @@ import polars as pl
 from flask import Flask, jsonify, send_file, request
 from flask_cors import CORS
 from dotenv import load_dotenv
+from flask_caching import Cache
 
 # Módulos específicos de la aplicación
 from config import settings
@@ -29,12 +30,20 @@ app = Flask(__name__)  # Inicializa la aplicación Flask
 # como 'Content-Disposition' para obtener el nombre del archivo al descargar.
 CORS(app, expose_headers=['Content-Disposition'])
 
+# --- 2. Configurar y vincular el caché con tu aplicación ---
+# Usamos 'simple' que guarda el caché en la memoria del servidor. Es perfecto para empezar.
+# Para producción, se podrían usar sistemas más robustos como 'redis' o 'memcached'.
+cache = Cache(app, config={
+    'CACHE_TYPE': 'simple',
+    'CACHE_DEFAULT_TIMEOUT': 300  # Tiempo por defecto en segundos (5 minutos)
+})
 
 # ==============================================================================
 # SECCIÓN: ENDPOINTS DE LA API
 # ==============================================================================
 
 @app.route('/api/reportes/rango-fechas', methods=['GET'])
+@cache.cached(timeout= 3600) # 1hr
 def get_rango_fechas():
     """
     Endpoint de inicialización.
@@ -61,6 +70,11 @@ def get_rango_fechas():
 
 
 @app.route('/api/reportes/analizar-y-comprobar', methods=['GET'])
+# --- Decorador de Caché ---
+# timeout=300: Cachea por 5 minutos.
+# query_string=True: CRÍTICO. Crea una clave de caché diferente para cada combinación
+# de fecha_inicio y fecha_fin. Así, el análisis de Enero no se confunde con el de Febrero.
+@cache.cached(timeout=300, query_string=True)
 def analizar_y_comprobar():
     """
     Endpoint principal para el dashboard.
@@ -89,6 +103,7 @@ def analizar_y_comprobar():
 
 
 @app.route('/api/reportes/descargar-excel', methods=['GET'])
+@cache.cached(timeout=300, query_string=True)
 def descargar_excel():
     """
     Endpoint para la descarga del reporte.
@@ -130,8 +145,8 @@ def descargar_excel():
 
 
 # CÓDIGO CORREGIDO Y SEGURO para app.py
-
 @app.route('/api/reportes/resumenes-paginados', methods=['GET'])
+@cache.cached(timeout=300, query_string=True)
 def get_resumenes_paginados():
     try:
         fecha_inicio = request.args.get('fecha_inicio')
@@ -165,6 +180,7 @@ def get_resumenes_paginados():
 
 
 @app.route('/api/reportes/detalle-factura', methods=['GET'])
+@cache.cached(timeout=300, query_string=True)
 def get_detalle_factura_individual():
     """
     Endpoint para el acordeón en la vista de detalle.
