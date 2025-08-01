@@ -1,0 +1,306 @@
+/* ==========================================================================
+   Dashboard de Análisis de Glosas - Hoja de Estilos Personalizada
+   (Complementa a Bootstrap)
+   ========================================================================== */
+
+/* ==========================================================================
+   1. VARIABLES Y ESTILOS BASE
+   ========================================================================== */
+:root {
+    --bs-body-bg: #f9fafb; /* Fondo general de la página */
+    --bs-border-color: #e2e8f0;
+    --bs-card-border-color: var(--bs-border-color);
+    --bs-card-box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 2px 5px rgba(0, 0, 0, 0.07);
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Estilos para todos los títulos */
+h1, h2, h3, h4, h5, h6 {
+    font-weight: 700; /* Negrita para todos los títulos */
+    color: #334155; /* Color consistente para títulos */
+}
+
+.card {
+    box-shadow: var(--bs-card-box-shadow);
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.card-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #334155;
+    margin-bottom: 1.25rem;
+}
+
+/* ==========================================================================
+   2. COMPONENTES ESPECÍFICOS
+   ========================================================================== */
+
+/* --- KPIs --- */
+.stat-group-card {
+    background-color: #f0f4f8; /* Fondo gris claro */
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem; /* Bordes redondeados */
+    padding: 1.5rem 1rem;
+    margin-bottom: 1rem; /* Espaciado entre tarjetas de KPI */
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    display: flex; /* Para centrar contenido */
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.stat-group-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.stat-group-card .stat-value {
+    font-size: 2.2rem; /* Tamaño intermedio */
+    font-weight: 700;
+    color: var(--bs-primary); /* Azul para números de facturas */
+    margin-bottom: 0.25rem;
+}
+
+.stat-group-card .stat-currency {
+    font-size: 1.8rem; /* Tamaño intermedio */
+    font-weight: 600;
+    color: var(--bs-success); /* Verde para valores monetarios */
+    margin-bottom: 0.25rem;
+}
+
+.stat-group-card p {
+    font-size: 0.9rem; /* Ajuste para etiquetas p */
+    color: #64748b; /* Un gris más suave */
+    margin: 0; /* Eliminar margen por defecto */
+    line-height: 1.3;
+    margin-bottom: 0.25rem; /* Pequeño margen inferior */
+}
+
+/* --- Filtro de Fechas en Header --- */
+.date-filter-container {
+    background-color: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.5rem; /* Bordes redondeados */
+    padding: 0.5rem 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.date-filter-container label {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #475569;
+}
+
+.date-filter-container input[type="date"] {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.3rem;
+    padding: 0.3rem 0.5rem;
+    font-family: inherit;
+    background-color: #fff;
+}
+
+/* --- Tabla de Estatus --- */
+#estatus-table-container {
+    height: 350px; /* Altura fija para que el scroll funcione */
+}
+
+.estatus-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.estatus-table th, .estatus-table td {
+    padding: 12px 10px;
+    text-align: center;
+    border-bottom: 1px solid var(--bs-border-color);
+}
+
+.estatus-table th {
+    background-color: #f7f9fc;
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    position: sticky;
+    top: 0;
+}
+
+.estatus-table tbody tr:hover {
+    background-color: #eff6ff;
+}
+
+/* --- Notificaciones --- */
+.notification-container.info {
+    background-color: var(--bs-info-bg-subtle);
+    color: var(--bs-info-text-emphasis);
+    border-color: var(--bs-info-border-subtle);
+}
+
+.notification-container.error {
+    background-color: var(--bs-danger-bg-subtle);
+    color: var(--bs-danger-text-emphasis);
+    border-color: var(--bs-danger-border-subtle);
+}
+
+/* --- Detalles de Tabla (details.php) --- */
+.details-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background-color: #ffffff; /* Fondo blanco para la tabla */
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem; /* Bordes redondeados para la tabla */
+    box-shadow: var(--bs-card-box-shadow);
+    overflow: hidden; /* Para que los bordes redondeados se apliquen correctamente */
+}
+
+.details-table th, .details-table td {
+    padding: 14px 15px;
+    text-align: center;
+    vertical-align: middle;
+    border-bottom: 1px solid #e9ecef; /* Borde más sutil */
+}
+
+.details-table thead th {
+    background-color: #e9ecef; /* Un gris claro para la cabecera */
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #495057;
+    text-transform: uppercase;
+    border-bottom: 2px solid #dee2e6; /* Borde más oscuro para la cabecera */
+}
+
+.resumen-row {
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.resumen-row:hover {
+    background-color: #f8f9fa; /* Hover más sutil */
+}
+
+.resumen-row td {
+    font-size: 0.9rem;
+}
+
+.resumen-row.open {
+    background-color: #e9ecef; /* Fondo para fila expandida */
+}
+
+.detalle-container-row td {
+    padding: 0 !important;
+    border-bottom: 1px solid var(--bs-border-color);
+}
+
+.detalle-wrapper {
+    max-height: 400px;
+    overflow-y: auto;
+    background-color: #f8f9fa; /* Fondo ligeramente diferente para el wrapper de detalle */
+}
+
+.detail-inner-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.detail-inner-table td, .detail-inner-table th {
+    padding: 12px 15px;
+    font-size: 0.9rem;
+    text-align: center;
+    border-bottom: 1px dashed #dee2e6; /* Borde más sutil para la tabla interna */
+}
+
+.detail-inner-table th {
+    position: sticky;
+    top: 0;
+    background-color: #e9ecef; /* Mismo color que la cabecera de la tabla principal */
+}
+
+.detail-inner-table tr:last-child td {
+    border-bottom: none;
+}
+
+.no-detail-message, .error-message {
+    padding: 2rem;
+    text-align: center;
+    font-weight: 500;
+    color: var(--bs-secondary);
+}
+
+/* --- Paginación --- */
+.pagination-container .btn {
+    font-size: 0.9rem;
+    padding: 8px 14px;
+}
+
+/* --- Estilos Condicionales para Filas de Detalle --- */
+.status-radicado {
+    background-color: #d4edda; /* Verde claro */
+    color: #155724;
+}
+
+.status-con-cc {
+    background-color: #fff3cd; /* Amarillo claro */
+    color: #856404;
+}
+
+.status-error {
+    background-color: #f8d7da; /* Rojo claro */
+    color: #721c24;
+}
+
+/* ==========================================================================
+   3. SKELETON LOADER
+   ========================================================================== */
+
+@keyframes shimmer {
+    0% { background-position: -1000px 0; }
+    100% { background-position: 1000px 0; }
+}
+
+.skeleton-card {
+    background-color: #e2e8f0;
+    border-radius: var(--bs-card-border-radius);
+    height: 450px; /* Altura estándar para los esqueletos de gráficos */
+    background-image: linear-gradient(to right, #e2e8f0 0%, #f8fafc 50%, #e2e8f0 100%);
+    background-repeat: no-repeat;
+    background-size: 2000px 100%;
+    animation: shimmer 2s linear infinite;
+}
+
+.skeleton-kpi {
+    height: 180px; /* Altura para el esqueleto de la tarjeta de KPIs */
+}
+
+/* Skeleton para la tabla de detalles */
+.skeleton-table-header {
+    height: 30px;
+    background-color: #e2e8f0;
+    margin-bottom: 10px;
+    border-radius: 4px;
+    background-image: linear-gradient(to right, #e2e8f0 0%, #f8fafc 50%, #e2e8f0 100%);
+    background-repeat: no-repeat;
+    background-size: 2000px 100%;
+    animation: shimmer 2s linear infinite;
+}
+
+.skeleton-table-row {
+    height: 20px;
+    background-color: #e2e8f0;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    background-image: linear-gradient(to right, #e2e8f0 0%, #f8fafc 50%, #e2e8f0 100%);
+    background-repeat: no-repeat;
+    background-size: 2000px 100%;
+    animation: shimmer 2s linear infinite;
+}

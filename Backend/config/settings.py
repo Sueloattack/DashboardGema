@@ -38,14 +38,14 @@ COLUMN_NAME_MAPPING_EXPORT = {
     COL_GL_DOCN: "No. Paciente",
     COL_ENTIDAD: "Entidad",
     #"fechanotificacion": "Fecha Notificación FC", # Nueva columna de cabecera
-    COL_FECHA_OBJECION: "Fecha Objeción", # Aclaramos que es del ítem
-    COL_FECHA_CONTESTACION: "Fecha Contestación",
+    COL_FECHA_OBJECION: "Fecha de objeción", # Aclaramos que es del ítem
+    COL_FECHA_CONTESTACION: "Fecha de contestación",
     COL_CARPETA_CC : "Cuenta de cobro",
-    COL_FECHA_RADICADO: "Fecha Radicado",
+    COL_FECHA_RADICADO: "Fecha de Radicado",
     COL_ESTATUS: "Estatus",
     COL_VR_GLOSA: "Valor Glosa",
     COL_TIPO: "Tipo",
-    "Total_Items_Factura": "Total Ítems en Factura",
+    "Total_Items_Factura": "Total Ítems",
     "Items_ConCC_ConFR": "Con CC y Con FR",
     "Items_ConCC_SinFR": "Con CC y Sin FR",
     "Items_SinCC_ConFR": "Sin CC y Con FR",
