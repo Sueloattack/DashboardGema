@@ -8,7 +8,7 @@
    ========================================================================== */
 
 /** URL base de la API del backend para centralizar las llamadas. */
-const API_BASE_URL = 'http://127.0.0.1:5000/api';
+const API_BASE_URL = 'http://192.168.1.10:5000/api';
 
 /**
  * Centraliza las llamadas a la API usando fetch, manejando errores de red y respuestas no exitosas.

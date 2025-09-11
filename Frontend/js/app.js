@@ -368,7 +368,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             // Nota: fetchApi no funciona aquí porque necesitamos el blob, no el JSON
-            const response = await fetch(`http://127.0.0.1:5000/api/reportes/descargar-excel?${params.toString()}`);
+            const response = await fetch(`http://192.168.1.10:5000/api/reportes/descargar-excel?${params.toString()}`);
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 throw new Error(errorData.message || `Error del servidor: HTTP ${response.status}`);
