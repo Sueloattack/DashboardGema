@@ -21,18 +21,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const detailsMainContent = document.getElementById('details-main-content');
     const tableContainer = document.getElementById('data-table');
     const paginationContainer = document.getElementById('pagination-container');
+    const saldoContainer = document.getElementById('saldo-acumulado-container');
+    const saldoValorElement = document.getElementById('saldo-acumulado-valor');
+    
     
     let currentPage = 1;
     let totalPages = 1;
     const urlParams = new URLSearchParams(window.location.search);
     
     const categoriaTitulos = {
-        'T1': 'Facturas Radicadas',
-        'T2': 'Facturas con Cuenta de Cobro y Sin Fecha de Radicado',
-        'T3': 'Facturas Sin Cuenta de Cobro y Sin Fecha de Radicado',
-        'T4': 'Facturas Sin Cuenta de Cobro y Con Fecha de Radicado',
-        'Mixtas': 'Facturas Mixtas',
-        'T2,T3,T4,Mixtas': 'Todas las Facturas No Radicadas'
+        'T1': 'Glosas radicadas',
+        'T2': 'Glosas con Cuenta de Cobro y sin Fecha de Radicado',
+        'T3': 'Glosas sin Cuenta de Cobro y sin Fecha de Radicado',
+        'T4': 'Glosas sin Cuenta de Cobro y con Fecha de Radicado',
+        'Mixtas': 'Glosas mixtas',
+        'T2,T3,T4,Mixtas': 'Todas las glosas no radicadas'
     };
 
     // ==========================================================================
@@ -57,13 +60,23 @@ document.addEventListener('DOMContentLoaded', () => {
         skeletonTableLoader.style.display = 'block';
         detailsMainContent.style.display = 'none';
         notificationArea.style.display = 'none';
+        saldoContainer.style.visibility = 'hidden';
         
+        const urlParams = new URLSearchParams(window.location.search);
         const fechaInicio = urlParams.get('fecha_inicio');
         const fechaFin = urlParams.get('fecha_fin');
         const categorias = urlParams.get('categorias');
         const entidad = urlParams.get('entidad');
         
-        backLink.href = `./test.php?fecha_inicio=${fechaInicio}&fecha_fin=${fechaFin}`;
+    // ========= INICIO DE LA LÓGICA CORREGIDA PARA "VOLVER AL DASHBOARD" =========
+        // 2. Construimos el enlace de vuelta usando las fechas de la URL.
+        if (fechaInicio && fechaFin) {
+            backLink.href = `./test.php?fecha_inicio=${fechaInicio}&fecha_fin=${fechaFin}`;
+        } else {
+            // Si por alguna razón no hay fechas, vuelve al dashboard sin filtros.
+            backLink.href = './test.php';
+        }
+    // =========================================================================
 
         if (!fechaInicio || !fechaFin || !categorias) {
             showNotification('Faltan parámetros en la URL.', 'error');
@@ -88,18 +101,23 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (!result.success) throw new Error(result.message);
             
-            const { data, pagina_actual, total_paginas, total_registros } = result.data;
+            const { data, pagina_actual, total_paginas, total_registros, saldo_total_acumulado } = result.data;
             currentPage = pagina_actual;
             totalPages = total_paginas;
 
-            let tituloFinal = `Detalle: ${capitalizeFirstLetter(tituloBase)} (${total_registros.toLocaleString('es')} Facturas)`;
+            let tituloFinal = `Detalle: ${capitalizeFirstLetter(tituloBase)} (${total_registros.toLocaleString('es')} glosas)`;
             if (entidad) {
                 tituloFinal += ` para ${capitalizeFirstLetter(entidad)}`;
             }
             titleElement.textContent = tituloFinal;
 
+            if (saldo_total_acumulado !== undefined) {
+                saldoValorElement.textContent = formatarMoneda(saldo_total_acumulado);
+                saldoContainer.style.visibility = 'visible'; // Lo hacemos visible
+            }
+
             if (total_registros === 0) {
-                showNotification('No se encontraron facturas para los filtros seleccionados.', 'info');
+                showNotification('No se encontraron glosas para los filtros seleccionados.', 'info');
                 skeletonTableLoader.style.display = 'none';
             } else {
                 renderTable(data);

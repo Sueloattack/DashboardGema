@@ -17,6 +17,7 @@ from extensions import cache
 from config import settings
 from db.mySQL_connector import obtener_rango_fechas
 from logic.data_processor import (
+    buscar_facturas_completas,
     generar_y_comprobar_todas_las_tablas,
     generar_excel_en_memoria,
     obtener_resumenes_paginados,
@@ -234,9 +235,36 @@ def get_detalle_factura_individual():
         traceback.print_exc()
         return jsonify({'success': False, 'message': 'Error al obtener el detalle de la factura.', 'error': str(e)}), 500
 
+@app.route('/api/reportes/buscar-facturas', methods=['POST'])
+@log_execution_time
+def buscar_facturas_por_id():
+    """
+    Endpoint para buscar facturas por una lista de formatos de factura completos.
+    Acepta un JSON con una lista de IDs de factura (ej: FCR123456) y devuelve los datos
+    encontrados y no encontrados.
+    """
+    try:
+        data = request.get_json()
+        if not data or 'ids' not in data:
+            return jsonify({'success': False, 'message': 'Faltan los identificadores en la petición.'}), 400
+        
+        lista_ids_factura = data['ids'] # Ahora sabemos que son formatos de factura
+        if not isinstance(lista_ids_factura, list):
+             return jsonify({'success': False, 'message': 'Los identificadores deben ser una lista.'}), 400
 
+        # Llamamos a la nueva función de lógica que buscrá SOLO por factura
+        resultados = buscar_facturas_completas(lista_ids_factura) # Renombrada la función
+        
+        return jsonify({'success': True, 'data': resultados}), 200
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Error durante la búsqueda de facturas.', 'error': str(e)}), 500
+    
 # Punto de entrada para ejecutar la aplicación
 if __name__ == '__main__':
     # 'host=0.0.0.0' hace que el servidor sea accesible desde otros dispositivos en la red.
     # 'debug=True' activa el modo de depuración, que recarga el servidor automáticamente con los cambios.
     app.run(host='0.0.0.0', port=5000, debug=True)
+    
+    

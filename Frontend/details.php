@@ -14,7 +14,18 @@
         <!-- Cabecera de Detalles -->
         <header class="d-flex flex-wrap align-items-center justify-content-between pb-3 mb-4 border-bottom">
             <h1 id="details-title" class="h3 mb-0">Cargando detalles...</h1>
-            <a href="#" id="back-link" class="btn btn-secondary">← Volver al Dashboard</a>
+
+            <!-- ========= INICIO DE LA NUEVA SECCIÓN ========= -->
+            <div class="d-flex align-items-center gap-3">
+                <!-- Div con ID único para mostrar el saldo -->
+                <div id="saldo-acumulado-container" class="text-end" style="visibility: hidden;">
+                    <span class="text-muted">Saldo Acumulado en Cartera</span>
+                    <p id="saldo-acumulado-valor" class="h4 mb-0 fw-bold">--</p>
+                </div>
+                
+                <a href="#" id="back-link" class="btn btn-secondary">← Volver al Dashboard</a>
+            </div>
+            <!-- ========= FIN DE LA NUEVA SECCIÓN ========= -->
         </header>
 
         <!-- Notificaciones -->

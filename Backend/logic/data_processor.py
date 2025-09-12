@@ -118,14 +118,14 @@ def crear_tabla_resumen_detalle_polars(df_items: pl.DataFrame) -> pl.DataFrame:
 def generar_y_comprobar_todas_las_tablas(fecha_inicio: str = None, fecha_fin: str = None) -> tuple:
     """
     Función orquestadora principal para el dashboard, con lógica de conteo unificada
-    para garantizar la consistencia entre los KPIs y las gráficas.
+    y cálculo de datos para la serie de tiempo de ingresos.
     """
     df_base = _obtener_y_limpiar_datos_base_cache(fecha_inicio, fecha_fin)
 
     if df_base.is_empty():
         return {}, {"error": "No hay datos en el rango de fechas seleccionado."}
 
-    # 1. Ejecutar el plan de clasificación Lazy para determinar a qué categoría pertenece cada factura.
+    # 1. Ejecutar el plan de clasificación Lazy
     lazy_df = df_base.lazy()
     lazy_clasificado = lazy_df.with_columns(
         pl.concat_str([pl.col(c).cast(pl.Utf8).fill_null("") for c in settings.GROUP_BY_FACTURA], separator="-").alias("factura_id")
@@ -139,16 +139,14 @@ def generar_y_comprobar_todas_las_tablas(fecha_inicio: str = None, fecha_fin: st
     }
 
     plan_final = lazy_clasificado.with_columns(
-        [(cond.sum().over("factura_id") == pl.count().over("factura_id")).alias(f"es_{tipo}") 
-         for tipo, cond in conds.items()]
+        [(cond.sum().over("factura_id") == pl.count().over("factura_id")).alias(f"es_{tipo}") for tipo, cond in conds.items()]
     )
 
     df_final = plan_final.collect()
 
     # --- INICIO DE LA LÓGICA DE CONTEO UNIFICADA ---
 
-    # 2. Crear LA ÚNICA FUENTE DE VERDAD para la categorización.
-    #    Generamos un DataFrame con una fila por factura y su categoría final.
+    # 2. Crear la "Fuente de Verdad": una fila por factura con su categoría
     df_facturas_unicas = df_final.with_columns(
         pl.when(pl.col("es_T1")).then(pl.lit("T1"))
           .when(pl.col("es_T2")).then(pl.lit("T2"))
@@ -159,66 +157,81 @@ def generar_y_comprobar_todas_las_tablas(fecha_inicio: str = None, fecha_fin: st
         "factura_id", 
         "saldocartera", 
         "CategoriaFactura", 
-        settings.COL_ENTIDAD
+        settings.COL_ENTIDAD,
+        # --- CORRECCIÓN AQUÍ: Añadimos la columna de fecha que necesitamos más tarde ---
+        settings.COL_FECHA_NOTIFICACION
     ).unique(subset="factura_id", keep="first")
     
     s_counts = {}
 
-    # 3. Calcular todos los KPIs y conteos a partir de esta fuente unificada.
-    # Conteo por cada categoría para los KPIs del donut chart
+    # 3. Calcular KPIs desde la fuente unificada
     conteo_por_categoria = df_facturas_unicas.group_by("CategoriaFactura").agg(pl.count().alias("conteo"))
     for row in conteo_por_categoria.iter_rows(named=True):
         categoria = row["CategoriaFactura"].lower()
         s_counts[f"facturas_{categoria}"] = row["conteo"]
 
-    # Definimos las categorías "No Radicadas"
     categorias_no_radicadas = ["T2", "T3", "T4", "Mixtas"]
-    
-    # DataFrame con solo las facturas no radicadas. Esta es la base para la gráfica y el conteo de estatus.
-    df_no_radicadas = df_final.join(
-        df_facturas_unicas.filter(pl.col("CategoriaFactura").is_in(categorias_no_radicadas)),
-        on="factura_id",
-        how="inner"
-    )
+    df_no_radicadas_unicas = df_facturas_unicas.filter(pl.col("CategoriaFactura").is_in(categorias_no_radicadas))
+    df_no_radicadas = df_final.join(df_no_radicadas_unicas.select("factura_id"), on="factura_id", how="inner")
 
-    # Cálculo de valores
     s_counts["valor_total_periodo"] = df_facturas_unicas["saldocartera"].sum() or 0
     s_counts["valor_total_radicado"] = df_facturas_unicas.filter(pl.col("CategoriaFactura") == "T1")["saldocartera"].sum() or 0
     s_counts["valor_total_no_radicado"] = df_facturas_unicas.filter(pl.col("CategoriaFactura") != "T1")["saldocartera"].sum() or 0
 
-    # Conteo por entidad para la gráfica de barras
     if not df_no_radicadas.is_empty():
-        conteo_entidad_df = df_no_radicadas.select(["factura_id", settings.COL_ENTIDAD]).unique().group_by(settings.COL_ENTIDAD).agg(pl.count().alias("total_facturas")).sort("total_facturas", descending=True)
-        s_counts["conteo_por_entidad"] = conteo_entidad_df.limit(20).to_dicts() # Se mantiene el límite para visualización
+        conteo_entidad_df = df_no_radicadas_unicas.group_by(settings.COL_ENTIDAD).agg(pl.count().alias("total_facturas")).sort("total_facturas", descending=True)
+        s_counts["conteo_por_entidad"] = conteo_entidad_df.limit(15).to_dicts()
+        # --- INICIO DE LA NUEVA LÓGICA ---
+        # Calculamos el TOP 10 de entidades por saldo en cartera no radicada
+        print("Calculando Top 10 de entidades por saldo no radicado...")
+        saldo_entidad_df = df_no_radicadas_unicas.group_by(settings.COL_ENTIDAD).agg(
+            pl.sum("saldocartera").alias("total_saldo")
+        ).sort("total_saldo", descending=True)
         
-        # Conteo por estatus (usa el mismo df_no_radicadas)
+        # Guardamos el Top 10 en el diccionario s_counts
+        s_counts["saldo_por_entidad_top10"] = saldo_entidad_df.limit(15).to_dicts()
+        # --- FIN DE LA NUEVA LÓGICA ---
         s_counts["conteo_por_estatus"] = df_no_radicadas.group_by(settings.COL_ESTATUS).agg(pl.count().alias("total_items")).sort(by=settings.COL_ESTATUS).to_dicts()
-        
-        # --- Verificación en la consola del servidor ---
-        kpi_no_radicadas = sum(s_counts.get(f"facturas_{cat.lower()}", 0) for cat in categorias_no_radicadas)
-        suma_grafica = conteo_entidad_df["total_facturas"].sum()
-        print("="*50)
-        print(f"VERIFICACIÓN: KPI No Radicadas = {kpi_no_radicadas}")
-        print(f"VERIFICACIÓN: Suma total de la gráfica de entidades = {suma_grafica}")
-        print(f"¿Coinciden?: {kpi_no_radicadas == suma_grafica}")
-        print("="*50)
-        
     else:
         s_counts["conteo_por_entidad"] = []
+        s_counts["saldo_por_entidad_top10"] = []    
         s_counts["conteo_por_estatus"] = []
 
-    # 4. Creación de los DataFrames para la exportación a Excel
+    # 4. DataFrames para exportación
     dfs = {}
     for cat in ["T1", "T2", "T3", "T4", "Mixtas"]:
         ids_cat = df_facturas_unicas.filter(pl.col("CategoriaFactura") == cat).select("factura_id")
         dfs[cat] = df_final.join(ids_cat, on="factura_id", how="inner")
 
-    # 5. Comprobación final de integridad
+    # 5. Comprobación de integridad
     s_counts["total_facturas_base"] = df_facturas_unicas.height
     s_counts["suma_categorizadas"] = sum(v for k, v in s_counts.items() if k.startswith('facturas_'))
     s_counts["comprobacion_exitosa"] = s_counts["total_facturas_base"] == s_counts["suma_categorizadas"]
 
-    # --- (Omitida la lógica del gráfico de ingresos por brevedad) ---
+    # --- LÓGICA PARA GRÁFICO DE INGRESO DE GLOSAS (Ahora funcionará) ---
+    print("Calculando datos para el gráfico de ingresos...")
+    df_ingresos = df_facturas_unicas.select(["factura_id", settings.COL_FECHA_NOTIFICACION]).sort(settings.COL_FECHA_NOTIFICACION)
+    
+    if df_ingresos.is_empty() or df_ingresos[settings.COL_FECHA_NOTIFICACION].is_null().all():
+        s_counts["ingresos_por_periodo"] = []
+        s_counts["granularidad_ingresos"] = "Diario"
+    else:
+        min_date = df_ingresos[settings.COL_FECHA_NOTIFICACION].min()
+        max_date = df_ingresos[settings.COL_FECHA_NOTIFICACION].max()
+        
+        dias_rango = (max_date - min_date).days
+        if dias_rango > 365 * 2:
+            granularidad_txt, granularidad_polars = "Anual", "1y"
+        elif dias_rango > 90:
+            granularidad_txt, granularidad_polars = "Mensual", "1mo"
+        else:
+            granularidad_txt, granularidad_polars = "Diario", "1d"
+            
+        print(f"Rango de {dias_rango} días. Granularidad seleccionada: {granularidad_txt}")
+        df_agrupado = df_ingresos.group_by_dynamic(index_column=settings.COL_FECHA_NOTIFICACION, every=granularidad_polars).agg(pl.count().alias("conteo"))
+        
+        s_counts["granularidad_ingresos"] = granularidad_txt
+        s_counts["ingresos_por_periodo"] = df_agrupado.rename({settings.COL_FECHA_NOTIFICACION: "fecha_agrupada"}).to_dicts()
 
     dfs["df_base"] = df_final
     return dfs, s_counts
@@ -252,6 +265,16 @@ def obtener_resumenes_paginados(fecha_inicio: str, fecha_fin: str, categorias: l
     if entidad:
         df_resumenes_filtrados = df_resumenes_filtrados.filter(pl.col(settings.COL_ENTIDAD) == entidad)
         
+    # --- INICIO DE LA NUEVA LÓGICA ---
+    
+    # Calculamos el saldo total ANTES de paginar
+    # Usamos la columna correcta que contiene el saldo ('saldocartera' o 'vr_glosa' en el resumen)
+    # Basado en tu función `crear_tabla_resumen...`, el saldo está en 'vr_glosa' para los resúmenes.
+    saldo_total_acumulado = df_resumenes_filtrados[settings.COL_VR_GLOSA].sum() or 0
+    print(f"Saldo acumulado para esta sección: {saldo_total_acumulado}")
+    
+    # --- FIN DE LA NUEVA LÓGICA ---
+        
     total_registros = len(df_resumenes_filtrados)
     if total_registros == 0:
         return {"data": [], "pagina_actual": pagina, "total_paginas": 0, "total_registros": 0}
@@ -264,7 +287,13 @@ def obtener_resumenes_paginados(fecha_inicio: str, fecha_fin: str, categorias: l
         pl.col(pl.Date).dt.strftime("%Y-%m-%d")
     ).fill_null("").to_dicts()
 
-    return {"data": datos_dict, "pagina_actual": pagina, "total_paginas": total_paginas, "total_registros": total_registros}
+    return {
+        "data": datos_dict, 
+        "pagina_actual": pagina, 
+        "total_paginas": total_paginas, 
+        "total_registros": total_registros,
+        "saldo_total_acumulado": saldo_total_acumulado
+        }
 
 def obtener_detalle_especifico_factura(docn: int) -> list:
     """Obtiene los ítems de detalle para un único gl_docn."""
@@ -282,13 +311,77 @@ def obtener_detalle_especifico_factura(docn: int) -> list:
     
     return df_detalle_final.to_dicts()
 
+def _create_factura_id_column(df: pl.DataFrame) -> pl.DataFrame:
+    """Añade una columna 'factura_id' combinando serie y número de factura."""
+    return df.with_columns(
+        (pl.col(settings.COL_SERIE).cast(pl.Utf8).fill_null("") + 
+         pl.col(settings.COL_N_FACTURA).cast(pl.Utf8).fill_null("")).alias("factura_id")
+    )
+
+
+def buscar_facturas_completas(lista_ids_factura_str: list) -> dict:
+    """Busca facturas por una lista de formatos completos y preserva los duplicados de la entrada."""
+    df_base = _obtener_y_limpiar_datos_base_cache(None, None)
+    
+    if df_base.is_empty():
+        return {"encontrados": [], "no_encontrados": lista_ids_factura_str, "saldo_total_acumulado": 0}
+
+    df_base_con_factura_id = _create_factura_id_column(df_base)
+    
+    # Limpiamos la entrada del usuario
+    ids_busqueda_limpios = [str(item).strip() for item in lista_ids_factura_str if str(item).strip()]
+    ids_busqueda_unicos = list(set(ids_busqueda_limpios))
+
+    # Buscamos solo los IDs únicos para ser eficientes
+    df_encontrados_unicos = df_base_con_factura_id.filter(
+        pl.col("factura_id").is_in(ids_busqueda_unicos)
+    )
+    
+    if df_encontrados_unicos.is_empty():
+        return {"encontrados": [], "no_encontrados": ids_busqueda_limpios, "saldo_total_acumulado": 0}
+
+    # --- Lógica para Replicar Duplicados ---
+    # Convertimos los resultados únicos a un diccionario para fácil acceso
+    resultados_dict = {
+        row["factura_id"]: df_encontrados_unicos.filter(pl.col("factura_id") == row["factura_id"])
+        for row in df_encontrados_unicos.select("factura_id").unique().iter_rows(named=True)
+    }
+
+    # Construimos el DataFrame final respetando el orden y duplicados de la entrada
+    resultados_finales_list = []
+    ids_encontrados_set = set()
+    for fact_id in ids_busqueda_limpios:
+        if fact_id in resultados_dict:
+            resultados_finales_list.append(resultados_dict[fact_id])
+            ids_encontrados_set.add(fact_id)
+
+    df_encontrados_items = pl.concat(resultados_finales_list) if resultados_finales_list else pl.DataFrame()
+
+    df_tabla_final = crear_tabla_resumen_detalle_polars(df_encontrados_items)
+    
+    # No encontrados son los que no estaban en el diccionario de resultados
+    no_encontrados = [fact_id for fact_id in ids_busqueda_limpios if fact_id not in ids_encontrados_set]
+    
+    df_resumenes = df_tabla_final.filter(pl.col("TipoFila") == "Resumen Factura")
+    saldo_acumulado = df_resumenes[settings.COL_VR_GLOSA].sum() or 0
+    
+    return {
+        "encontrados": df_tabla_final.to_dicts(),
+        "no_encontrados": no_encontrados,
+        "saldo_total_acumulado": saldo_acumulado
+    }
+
 def generar_excel_en_memoria(dataframes: dict) -> io.BytesIO:
-    """Genera el archivo Excel a partir de los DataFrames categorizados."""
+    """
+    Genera el archivo Excel a partir de los DataFrames categorizados,
+    eliminando la parte de la hora de las fechas a nivel de datos.
+    """
     buffer = io.BytesIO()
     nombres_hojas = {"T1": "Radicadas", "T2": "Con CC y Sin FR", "T3": "Sin CC y Sin FR", "T4": "Sin CC y Con FR", "Mixtas": "Mixtas"}
     
     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
         workbook = writer.book
+        # Este formato ahora servirá como un extra, pero la clave es el cambio en los datos.
         formato_fecha = workbook.add_format({'num_format': 'dd/mm/yyyy'})
         
         sheets_to_process = {k: v for k, v in dataframes.items() if k in nombres_hojas}
@@ -300,23 +393,37 @@ def generar_excel_en_memoria(dataframes: dict) -> io.BytesIO:
             if not df_items_polars.is_empty():
                 df_reporte = crear_tabla_resumen_detalle_polars(df_items_polars)
                 df_pandas = df_reporte.to_pandas()
-                df_pandas = df_pandas.rename(columns=settings.COLUMN_NAME_MAPPING_EXPORT)
+                df_pandas.rename(columns=settings.COLUMN_NAME_MAPPING_EXPORT, inplace=True)
+
+                # --- INICIO DE LA SOLUCIÓN DEFINITIVA ---
                 
+                # 1. Identificamos las columnas de fecha por su nombre ya renombrado.
+                columnas_de_fecha_excel = [
+                    col for col in df_pandas.columns if 'fecha' in col.lower()
+                ]
+
+                # 2. Iteramos sobre esas columnas para TRUNCAR la hora.
+                for col_fecha in columnas_de_fecha_excel:
+                    # Convertimos a datetime de pandas.
+                    df_pandas[col_fecha] = pd.to_datetime(df_pandas[col_fecha], errors='coerce')
+                    # LA LÍNEA MÁGICA: .dt.date extrae solo la parte de la fecha,
+                    # descartando la hora. Los valores nulos (NaT) se mantienen.
+                    df_pandas[col_fecha] = df_pandas[col_fecha].dt.date
+
+                # --- FIN DE LA SOLUCIÓN DEFINITIVA ---
+
+                # Ahora escribimos el DataFrame con los datos ya limpios.
                 df_pandas.to_excel(writer, sheet_name=sheet_name, index=False)
                 
-                # Formato post-escritura para mejor control
+                # Aplicamos formato y auto-ancho como mejora visual.
                 worksheet = writer.sheets[sheet_name]
-                for idx, col in enumerate(df_pandas):
-                    series = df_pandas[col]
-                    max_len = max((
-                        series.astype(str).map(len).max(),
-                        len(str(series.name))
-                    )) + 2
-                    if 'fecha' in str(series.name).lower():
-                        worksheet.set_column(idx, idx, max_len, formato_fecha)
+                for idx, col_name in enumerate(df_pandas.columns):
+                    max_len = max(df_pandas[col_name].astype(str).map(len).max(), len(col_name)) + 2
+                    if col_name in columnas_de_fecha_excel:
+                        worksheet.set_column(idx, idx, 12, formato_fecha) # 12 es un ancho fijo bueno para fechas
                     else:
                         worksheet.set_column(idx, idx, max_len)
-                
+                        
                 print(f"Hoja '{sheet_name}' escrita y formateada.")
             else:
                 print(f"Hoja '{sheet_name}' omitida por estar vacía.")

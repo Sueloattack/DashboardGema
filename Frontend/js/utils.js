@@ -7,20 +7,6 @@
    ========================================================================== */
 
 /**
- * Muestra un mensaje al usuario en el área de notificaciones.
- * @param {string} message - El mensaje a mostrar.
- * @param {'info' | 'error' | 'success'} [type='info'] - El tipo de notificación.
- */
-export function showNotification(message, type = 'info') {
-    const notificationArea = document.getElementById('notification-area');
-    if (!notificationArea) return;
-
-    notificationArea.textContent = message;
-    notificationArea.className = `notification-container ${type}`;
-    notificationArea.style.display = 'block';
-}
-
-/**
  * Formatea un número como moneda colombiana (COP) sin decimales.
  * @param {number | string | null | undefined} number - El número a formatear.
  * @returns {string} El número formateado como un string (ej. '$1.234.567' o '$0').
@@ -50,4 +36,15 @@ export function formatearFecha(dateString) {
     const anio = date.getUTCFullYear();
     
     return `${dia}/${mes}/${anio}`;
+}
+
+// js/utils.js
+export function showNotification(message, type = 'info') {
+    const notificationArea = document.getElementById('notification-area');
+    if (!notificationArea) return;
+    notificationArea.textContent = message;
+    // Quitamos y añadimos la clase para reiniciar la transición
+    notificationArea.className = '';
+    void notificationArea.offsetWidth; // truco para forzar reflow
+    notificationArea.classList.add(type, 'show');
 }

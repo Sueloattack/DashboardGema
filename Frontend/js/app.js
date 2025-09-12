@@ -6,7 +6,8 @@
 
 import { fetchApi } from './api.js';
 import { showNotification, formatarMoneda } from './utils.js';
-
+let fullEntidadData = [];
+let fullSaldoData = [];
 
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -22,6 +23,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const notificationArea = document.getElementById('notification-area');
     const initialMessage = document.getElementById('initial-message');
     const skeletonLoader = document.getElementById('skeleton-loader');
+    const filtroConteoBtn = document.getElementById('filtro-entidad-conteo-btn');
+    const modalFiltroConteoBody = document.getElementById('modal-filtro-conteo-body');
+
+    const filtroSaldoBtn = document.getElementById('filtro-entidad-saldo-btn');
+    const modalFiltroSaldoBody = document.getElementById('modal-filtro-saldo-body');
 
     const statTotal = document.getElementById('stat-total');
     const statValorTotal = document.getElementById('stat-valor-total');
@@ -31,6 +37,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const statValorNoRadicado = document.getElementById('stat-valor-no-radicado');
     const estatusTableContainer = document.getElementById('estatus-table-container');
     const ingresosChartTitle = document.getElementById('ingresos-chart-title');
+    const ejecutarBusquedaBtn = document.getElementById('ejecutar-busqueda-btn');
+    const busquedaTextarea = document.getElementById('busqueda-textarea');
 
     const apexChartsSpanishLocale = {
         name: 'es',
@@ -56,6 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================================================
 
     const irADetalle = (categorias, entidad = null) => {
+        // LEEMOS LAS FECHAS DIRECTAMENTE DE LOS INPUTS DEL DASHBOARD
         const fechaInicio = fechaInicioInput.value;
         const fechaFin = fechaFinInput.value;
 
@@ -64,6 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // AÑADIMOS LAS FECHAS A LOS PARÁMETROS DE LA URL
         const params = new URLSearchParams({
             fecha_inicio: fechaInicio,
             fecha_fin: fechaFin,
@@ -73,6 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if(entidad){
             params.append('entidad', entidad);
         }
+        // La URL de destino ahora contendrá todo el contexto necesario
         window.location.href = `details.php?${params.toString()}`;
     };
 
@@ -84,9 +95,60 @@ document.addEventListener('DOMContentLoaded', () => {
         general: null,
         detalle: null,
         entidades: null,
+        saldoEntidades: null,
         ingresos: null,
 
         init() {
+            const saldoBarOptions = {
+                series: [{ data: [] }], // Quitamos 'name'
+                chart: {
+                    type: 'bar',
+                    height: 400,
+                    events: {
+                        // Este evento se dispara al hacer CLIC en una BARRA
+                        dataPointSelection: (evt, chartCtx, config) => {
+                            const entidadSeleccionada = config.w.globals.labels[config.dataPointIndex];
+                            irADetalle(['T2', 'T3', 'T4', 'Mixtas'], entidadSeleccionada);
+                        }
+                    }
+                },
+                plotOptions: { 
+                    bar: { 
+                        borderRadius: 4, 
+                        horizontal: false, 
+                        columnWidth: '50%', 
+                        distributed: true 
+                    } 
+                },
+                // --- INICIO DE LA CORRECCIÓN DE LEYENDA ---
+                legend: {
+                    show: true,
+                    position: 'bottom',
+                    horizontalAlign: 'center',
+                    itemMargin: { horizontal: 10, vertical: 5 },
+                    // La misma configuración para activar el clic
+                    onItemClick: {
+                        toggleDataSeries: true
+                    },
+                    onItemHover: {
+                        highlightDataSeries: false
+                    }
+                },
+                // --- FIN DE LA CORRECCIÓN DE LEYENDA ---
+                dataLabels: { enabled: false },
+                xaxis: {
+                    type: 'category',
+                    labels: { rotate: -45, trim: true },
+                    title: { text: 'Entidades' }
+                },
+                yaxis: {
+                    title: { text: 'Saldo en Cartera' },
+                    labels: { formatter: (val) => formatarMoneda(val) }
+                },
+                tooltip: { y: { formatter: (val) => formatarMoneda(val), title: { formatter: () => 'Saldo:' } } },
+                noData: { text: 'Sin datos para mostrar.' }
+            };
+
             const generalPieOptions = {
                 series: [],
                 labels: [],
@@ -106,7 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 legend: { position: 'bottom' },
                 noData: { text: 'Selecciona un rango de fechas y ejecuta el análisis.' },
-                plotOptions: { pie: { donut: { labels: { show: true, total: { show: true, label: 'Total Facturas' } } } } },
+                plotOptions: { pie: { donut: { labels: { show: true, total: { show: true, label: 'Total glosas' } } } } },
                 dataLabels: { formatter: (val) => `${val.toFixed(1)}%` },
             };
 
@@ -138,24 +200,49 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             const barOptions = {
-                series: [{ name: 'N° Facturas', data: [] }],
-                chart: { 
-                    type: 'bar', 
-                    height: 400, 
-                    toolbar: { show: false }, 
-                    events: {
-                        dataPointSelection: (evt, chartCtx, config) => {
-                            const entidadSeleccionada = config.w.config.series[0].data[config.dataPointIndex].x;
-                            irADetalle(['T2', 'T3', 'T4', 'Mixtas'], entidadSeleccionada);
-                        }
+            series: [{ data: [] }], // Quitamos 'name'
+            chart: { 
+                type: 'bar', 
+                height: 400, 
+                toolbar: { show: false }, 
+                events: {
+                    // Este evento se dispara al hacer CLIC en una BARRA
+                    dataPointSelection: (evt, chartCtx, config) => {
+                        const entidadSeleccionada = config.w.config.series[0].data[config.dataPointIndex].x;
+                        irADetalle(['T2', 'T3', 'T4', 'Mixtas'], entidadSeleccionada);
                     }
+                }
+            },
+            plotOptions: { 
+                bar: { 
+                    borderRadius: 4, 
+                    horizontal: true, 
+                    distributed: true 
+                } 
+            },
+            // --- INICIO DE LA CORRECCIÓN DE LEYENDA ---
+            legend: {
+                show: true,           
+                position: 'bottom',    
+                horizontalAlign: 'center', 
+                itemMargin: { horizontal: 10, vertical: 5 },
+                // Esta configuración es la clave:
+                // le decimos a la leyenda que SU acción de clic es mostrar/ocultar
+                onItemClick: {
+                    toggleDataSeries: true
                 },
-                plotOptions: { bar: { borderRadius: 4, horizontal: true } },
-                dataLabels: { enabled: true, formatter: val => val.toLocaleString('es') },
-                xaxis: { title: { text: 'Cantidad de Facturas' } },
-                noData: { text: 'Sin datos para mostrar.' },
-                tooltip: { y: { formatter: val => val.toLocaleString('es') } },
-            };
+                // Y le decimos que pasar el mouse por encima NO resalte las barras
+                // para que no interfiera con el tooltip
+                onItemHover: {
+                    highlightDataSeries: false
+                }
+            },
+            // --- FIN DE LA CORRECCIÓN DE LEYENDA ---
+            dataLabels: { enabled: true, formatter: val => val.toLocaleString('es') },
+            xaxis: { title: { text: 'Cantidad de glosas' } },
+            tooltip: { y: { formatter: val => val.toLocaleString('es'), title: { formatter: () => 'Cantidad:' } } },
+            noData: { text: 'Sin datos para mostrar.' },
+        };
 
             const ingresosLineOptions = {
                 series: [{ name: 'Glosas Ingresadas', data: [] }],
@@ -174,7 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     title: { text: 'Fecha de Notificación' },
                     labels: { datetimeUTC: false } 
                 },
-                yaxis: { min:0.5, title: { text: 'N° de Facturas' }, labels: { formatter: (val) => val.toFixed(0) } },
+                yaxis: { min:0.5, title: { text: 'N° de Glosas' }, labels: { formatter: (val) => val.toFixed(0) } },
                 tooltip: { x: { format: 'dd MMMM yyyy' } },
                 noData: { text: 'Sin datos para mostrar.' }
             };
@@ -182,11 +269,13 @@ document.addEventListener('DOMContentLoaded', () => {
             this.general = new ApexCharts(document.querySelector("#chart-general"), generalPieOptions);
             this.detalle = new ApexCharts(document.querySelector("#chart-puras"), detallePieOptions);
             this.entidades = new ApexCharts(document.querySelector("#chart-entidades"), barOptions);
+            this.saldoEntidades = new ApexCharts(document.querySelector("#chart-saldo-entidades"), saldoBarOptions);
             this.ingresos = new ApexCharts(document.querySelector("#chart-ingresos"), ingresosLineOptions);
 
             this.general.render();
             this.detalle.render();
             this.entidades.render();
+            this.saldoEntidades.render();
             this.ingresos.render();
         },
 
@@ -197,6 +286,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const T4 = data.facturas_t4 || 0;
             const Mixtas = data.facturas_mixtas || 0;
             const TotalNoRadicadas = T2 + T3 + T4 + Mixtas;
+            fullEntidadData = data.conteo_por_entidad || [];
+            fullSaldoData = data.saldo_por_entidad_top10 || [];
 
             statTotal.textContent = (data.total_facturas_base || 0).toLocaleString('es');
             statRadicadas.textContent = T1.toLocaleString('es');
@@ -204,6 +295,17 @@ document.addEventListener('DOMContentLoaded', () => {
             statValorTotal.textContent = formatarMoneda(data.valor_total_periodo);
             statValorRadicado.textContent = formatarMoneda(data.valor_total_radicado);
             statValorNoRadicado.textContent = formatarMoneda(data.valor_total_no_radicado);
+
+            setupEntityFilter('conteo', fullEntidadData, modalFiltroConteoBody, this.entidades, 'total_facturas');
+            setupEntityFilter('saldo', fullSaldoData, modalFiltroSaldoBody, this.saldoEntidades, 'total_saldo');
+            
+            // Habilitar los botones de filtro ahora que hay datos
+            filtroConteoBtn.disabled = fullEntidadData.length === 0;
+            filtroSaldoBtn.disabled = fullSaldoData.length === 0;
+
+            // Actualizamos los gráficos con la vista inicial (todos seleccionados)
+            this.entidades.updateSeries([{ data: formatChartData(fullEntidadData, 'nom_entidad', 'total_facturas') }]);
+            this.saldoEntidades.updateSeries([{ data: formatChartData(fullSaldoData, 'nom_entidad', 'total_saldo') }]);
 
             this.general.updateOptions({
                 series: [T1, TotalNoRadicadas],
@@ -228,6 +330,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.entidades.updateSeries([{ data: formattedEntidadData }]);
             } else {
                 this.entidades.updateSeries([{ data: [] }]);
+            }
+
+                // ===== LÓGICA DE ACTUALIZACIÓN DEL NUEVO GRÁFICO =====
+            const saldoData = data.saldo_por_entidad_top10 || [];
+            if (saldoData.length > 0) {
+                // Formateamos los datos para que ApexCharts los entienda (x: etiqueta, y: valor)
+                const formattedSaldoData = saldoData.map(item => ({
+                    x: item.nom_entidad,
+                    y: item.total_saldo
+                }));
+                this.saldoEntidades.updateSeries([{ data: formattedSaldoData }]);
+            } else {
+                this.saldoEntidades.updateSeries([{ data: [] }]);
             }
 
             const estatusData = data.conteo_por_estatus || [];
@@ -308,8 +423,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     runBtn.addEventListener('click', async () => {
+        const fechaInicio = fechaInicioInput.value;
+        const fechaFin = fechaFinInput.value;
         const btnLoader = runBtn.querySelector('.spinner-border');
         
+        if (fechaInicio && fechaFin) {
+                sessionStorage.setItem('lastDateRange', JSON.stringify({ fecha_inicio: fechaInicio, fecha_fin: fechaFin }));
+            }
+
         runBtn.disabled = true;
         if (btnLoader) {
             btnLoader.style.display = 'inline-block';
@@ -394,6 +515,131 @@ document.addEventListener('DOMContentLoaded', () => {
             downloadBtn.disabled = false;
             downloadBtn.textContent = 'Descargar Reporte';
         }
+    });
+
+    // --- 3. CREA DOS NUEVAS FUNCIONES AYUDANTES FUERA DEL OBJETO `charts` PERO DENTRO DEL EVENT LISTENER ---
+    /** Formatea los datos de la API al formato {x, y} que ApexCharts necesita */
+    const formatChartData = (data, xKey, yKey) => {
+        return data.map(item => ({
+            x: item[xKey],
+            y: item[yKey]
+        }));
+    };
+
+    /**
+     * Configura un modal de filtro de entidades, sus checkboxes y eventos.
+     * @param {string} type - 'conteo' o 'saldo' para diferenciar IDs.
+     * @param {Array} data - La lista completa de entidades de la API.
+     * @param {HTMLElement} modalBody - El elemento del DOM donde se inyectarán los checkboxes.
+     * @param {ApexCharts.ApexOptions} chartInstance - La instancia del gráfico a actualizar.
+     * @param {string} valueKey - La clave del valor a mostrar ('total_facturas' o 'total_saldo').
+     */
+    const setupEntityFilter = (type, data, modalBody, chartInstance, valueKey) => {
+        if (!data || data.length === 0) {
+            modalBody.innerHTML = '<p>No hay entidades para filtrar en este período.</p>';
+            return;
+        }
+
+        // --- Referencias a los nuevos inputs ---
+        const minInput = document.getElementById(`min-${type}-input`);
+        const maxInput = document.getElementById(`max-${type}-input`);
+
+        // --- Generar checkboxes (esto no cambia) ---
+        let checkboxesHTML = data.map((entidad, index) => `
+            <div class="form-check">
+                <input class="form-check-input filter-checkbox-${type}" type="checkbox" value="${entidad.nom_entidad}" id="check-${type}-${index}" checked>
+                <label class="form-check-label" for="check-${type}-${index}">
+                    ${entidad.nom_entidad}
+                </label>
+            </div>
+        `).join('');
+        modalBody.innerHTML = checkboxesHTML;
+
+    const formatCurrencyInput = (inputElement) => {
+        // Obtenemos el valor y quitamos todo lo que no sea un dígito
+        let value = inputElement.value.replace(/[^\d]/g, '');
+        if (value) {
+            // Convertimos a número y usamos tu función existente para formatear
+            const numberValue = parseInt(value, 10);
+            inputElement.value = formatarMoneda(numberValue);
+        } else {
+            inputElement.value = '';
+        }
+    };
+
+     // --- FUNCIÓN CENTRAL DE FILTRADO (AHORA ES MÁS INTELIGENTE) ---
+    const applyAllFilters = () => {
+        // Leemos los valores numéricos SIEMPRE
+        const minVal = parseFloat(minInput.value.replace(/[^\d]/g, '')) || 0;
+        const maxVal = parseFloat(maxInput.value.replace(/[^\d]/g, '')) || Infinity;
+        
+        // Leemos los checkboxes marcados SIEMPRE
+        const selectedEntities = Array.from(document.querySelectorAll(`.filter-checkbox-${type}:checked`))
+                                    .map(cb => cb.value);
+
+        // Aplicamos AMBOS filtros a la vez
+        const filteredData = data.filter(item => {
+            const isSelectedByCheckbox = selectedEntities.includes(item.nom_entidad);
+            const value = item[valueKey];
+            const isInValueRange = value >= minVal && value <= maxVal;
+            
+            // La entidad debe cumplir ambas condiciones para ser mostrada
+            return isSelectedByCheckbox && isInValueRange;
+        });
+        
+        chartInstance.updateSeries([{ data: formatChartData(filteredData, 'nom_entidad', valueKey) }]);
+    };
+    
+    // Asignamos applyAllFilters a TODOS los eventos de cambio
+    document.querySelectorAll(`.filter-checkbox-${type}`).forEach(checkbox => {
+        checkbox.addEventListener('change', applyAllFilters);
+    });
+    minInput.addEventListener('input', applyAllFilters);
+    maxInput.addEventListener('input', applyAllFilters);
+
+    // Los botones de "Seleccionar Todo" también deben usar la función central
+    document.getElementById(`seleccionar-todas-${type}`).onclick = () => {
+        document.querySelectorAll(`.filter-checkbox-${type}`).forEach(cb => cb.checked = true);
+        applyAllFilters();
+    };
+    document.getElementById(`deseleccionar-todas-${type}`).onclick = () => {
+        document.querySelectorAll(`.filter-checkbox-${type}`).forEach(cb => cb.checked = false);
+        applyAllFilters();
+    };
+
+    // --- NUEVOS EVENTOS PARA EL FORMATEO VISUAL ---
+    // Si el filtro es de tipo 'saldo', aplicamos el formateo de moneda en tiempo real
+    if (type === 'saldo') {
+        minInput.addEventListener('keyup', () => formatCurrencyInput(minInput));
+        maxInput.addEventListener('keyup', () => formatCurrencyInput(maxInput));
+    }};
+
+    ejecutarBusquedaBtn.addEventListener('click', () => {
+        const texto = busquedaTextarea.value.trim();
+        if (!texto) {
+            showNotification('El campo de búsqueda está vacío.', 'error');
+            return;
+        }
+
+        const ids = texto.split(/\r?\n/).filter(line => line.trim() !== '');
+        
+        const modalElement = document.getElementById('modal-busqueda-facturas');
+        const modal = bootstrap.Modal.getInstance(modalElement);
+        if (modal) {
+            modal.hide();
+        } else {
+            console.warn("Modal de búsqueda no encontrado para cerrar.");
+        }
+
+
+        const searchData = {
+            ids: ids,
+            // Agrega esta información para el título de la página de resultados
+            searchType: 'Factura Completa' 
+        };
+        sessionStorage.setItem('searchRequest', JSON.stringify(searchData));
+        
+        window.location.href = 'search-details.php';
     });
 
     charts.init();
