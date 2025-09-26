@@ -8,7 +8,7 @@ import time
 from functools import wraps
 import polars as pl
 from flask import Flask, jsonify, send_file, request
-from flask_cors import CORS
+from flask_cors import CORS, cross_origin
 from dotenv import load_dotenv
 from flask_caching import Cache
 from extensions import cache
@@ -20,6 +20,7 @@ from logic.data_processor import (
     buscar_facturas_completas,
     generar_y_comprobar_todas_las_tablas,
     generar_excel_en_memoria,
+    generar_excel_busqueda_en_memoria,
     obtener_resumenes_paginados,
     obtener_detalle_especifico_factura
 )
@@ -44,7 +45,7 @@ app = Flask(__name__)  # Inicializa la aplicación Flask
 # (que corre en otro dominio, ej. mi-dashboard.test) se comunique con esta API.
 # 'expose_headers' permite que el JavaScript del frontend pueda leer cabeceras
 # como 'Content-Disposition' para obtener el nombre del archivo al descargar.
-CORS(app, expose_headers=['Content-Disposition'])
+
 
 # --- 2. Configurar y vincular el caché con tu aplicación ---
 # Usamos 'simple' que guarda el caché en la memoria del servidor. Es perfecto para empezar.
@@ -59,6 +60,7 @@ cache.init_app(app, config={
 # ==============================================================================
 
 @app.route('/api/reportes/rango-fechas', methods=['GET'])
+@cross_origin()
 @log_execution_time
 @cache.cached(timeout= 3600) # 1hr
 def get_rango_fechas():
@@ -87,6 +89,7 @@ def get_rango_fechas():
 
 
 @app.route('/api/reportes/analizar-y-comprobar', methods=['GET'])
+@cross_origin()
 @log_execution_time
 # --- Decorador de Caché ---
 # timeout=300: Cachea por 5 minutos.
@@ -121,6 +124,7 @@ def analizar_y_comprobar():
 
 
 @app.route('/api/reportes/descargar-excel', methods=['GET'])
+@cross_origin()
 @log_execution_time
 @cache.cached(timeout=300, query_string=True)
 def descargar_excel():
@@ -165,6 +169,7 @@ def descargar_excel():
 
 # CÓDIGO CORREGIDO Y SEGURO para app.py
 @app.route('/api/reportes/resumenes-paginados', methods=['GET'])
+@cross_origin()
 @log_execution_time
 @cache.cached(timeout=300, query_string=True)
 def get_resumenes_paginados():
@@ -200,6 +205,7 @@ def get_resumenes_paginados():
 
 
 @app.route('/api/reportes/detalle-factura', methods=['GET'])
+@cross_origin()
 @log_execution_time
 @cache.cached(timeout=300, query_string=True)
 def get_detalle_factura_individual():
@@ -236,6 +242,7 @@ def get_detalle_factura_individual():
         return jsonify({'success': False, 'message': 'Error al obtener el detalle de la factura.', 'error': str(e)}), 500
 
 @app.route('/api/reportes/buscar-facturas', methods=['POST'])
+@cross_origin()
 @log_execution_time
 def buscar_facturas_por_id():
     """
@@ -260,6 +267,54 @@ def buscar_facturas_por_id():
     except Exception as e:
         traceback.print_exc()
         return jsonify({'success': False, 'message': 'Error durante la búsqueda de facturas.', 'error': str(e)}), 500
+
+
+@app.route('/api/reportes/buscar-facturas/descargar-excel', methods=['OPTIONS'])
+def handle_excel_download_options():
+    response = jsonify({'status': 'ok'})
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+    response.headers.add('Access-Control-Allow-Methods', 'POST')
+    return response
+
+
+@app.route('/api/reportes/buscar-facturas/descargar-excel', methods=['POST'])
+@cross_origin(origins="*", methods=["POST"], headers=["Content-Type"])
+def descargar_excel_busqueda():
+    """
+    Endpoint para descargar un reporte en Excel con los resultados de una búsqueda específica.
+    """
+    try:
+        data = request.get_json()
+        if not data or 'ids' not in data:
+            return jsonify({'success': False, 'message': 'Faltan los identificadores en la petición.'}), 400
+        
+        lista_ids_factura = data['ids']
+        if not isinstance(lista_ids_factura, list):
+             return jsonify({'success': False, 'message': 'Los identificadores deben ser una lista.'}), 400
+
+        # Generar el Excel en memoria con la nueva función
+        buffer = generar_excel_busqueda_en_memoria(lista_ids_factura)
+        
+        # Comprobar si el buffer tiene contenido
+        if buffer.getbuffer().nbytes == 0:
+            return jsonify({'success': False, 'message': 'No se encontraron datos para generar el Excel con los IDs proporcionados.'}), 404
+
+        # Crear un nombre de archivo dinámico
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        nombre_archivo = f"Reporte_Busqueda_{timestamp}.xlsx"
+
+        # Enviar el archivo
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=nombre_archivo,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Error al generar el archivo Excel de la búsqueda.', 'error': str(e)}), 500
     
 # Punto de entrada para ejecutar la aplicación
 if __name__ == '__main__':

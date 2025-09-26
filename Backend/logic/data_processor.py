@@ -430,3 +430,51 @@ def generar_excel_en_memoria(dataframes: dict) -> io.BytesIO:
 
     buffer.seek(0)
     return buffer
+
+def generar_excel_busqueda_en_memoria(lista_ids_factura: list) -> io.BytesIO:
+    """
+    Genera un archivo Excel en memoria para las facturas específicas de una búsqueda.
+    """
+    # 1. Obtener los datos completos para los IDs de factura proporcionados.
+    # La función `buscar_facturas_completas` ya nos da la estructura que necesitamos.
+    resultados_busqueda = buscar_facturas_completas(lista_ids_factura)
+    df_encontrados_polars = pl.DataFrame(resultados_busqueda['encontrados'])
+
+    if df_encontrados_polars.is_empty():
+        # Si no se encontró nada, devolvemos un buffer vacío o podríamos lanzar un error.
+        return io.BytesIO()
+
+    # 2. Preparar el buffer y el ExcelWriter.
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+        workbook = writer.book
+        formato_fecha = workbook.add_format({'num_format': 'dd/mm/yyyy'})
+        sheet_name = "Resultado Búsqueda"
+
+        # 3. Convertir a Pandas y renombrar columnas.
+        # No necesitamos `crear_tabla_resumen_detalle_polars` porque `buscar_facturas_completas` ya lo hace.
+        df_pandas = df_encontrados_polars.to_pandas()
+        df_pandas.rename(columns=settings.COLUMN_NAME_MAPPING_EXPORT, inplace=True)
+
+        # 4. Limpiar y formatear fechas (exactamente como en la otra función).
+        columnas_de_fecha_excel = [col for col in df_pandas.columns if 'fecha' in col.lower()]
+        for col_fecha in columnas_de_fecha_excel:
+            df_pandas[col_fecha] = pd.to_datetime(df_pandas[col_fecha], errors='coerce').dt.date
+
+        # 5. Escribir en la hoja de Excel.
+        df_pandas.to_excel(writer, sheet_name=sheet_name, index=False)
+
+        # 6. Auto-ajustar el ancho de las columnas.
+        worksheet = writer.sheets[sheet_name]
+        for idx, col_name in enumerate(df_pandas.columns):
+            max_len = max(df_pandas[col_name].astype(str).map(len).max(), len(col_name)) + 2
+            if col_name in columnas_de_fecha_excel:
+                worksheet.set_column(idx, idx, 12, formato_fecha)
+            else:
+                worksheet.set_column(idx, idx, max_len)
+        
+        print(f"Hoja '{sheet_name}' para la búsqueda ha sido escrita y formateada.")
+
+    # 7. Devolver el buffer para ser enviado como archivo.
+    buffer.seek(0)
+    return buffer
