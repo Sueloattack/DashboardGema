@@ -19,6 +19,7 @@
                     <span class="text-muted">Saldo Acumulado</span>
                     <p id="saldo-acumulado-valor" class="h4 mb-0 fw-bold">--</p>
                 </div>
+                <button id="download-excel-button" class="btn btn-success" style="display: none;">Descargar Excel</button>
                 <a href="#" id="back-link" class="btn btn-secondary">← Volver al Dashboard</a>
             </div>
         </header>

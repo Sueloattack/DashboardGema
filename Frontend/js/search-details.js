@@ -1,7 +1,7 @@
 // js/search-details.js
 // VERSIÓN FINAL: Unificada con la lógica de details.js
 
-import { fetchApi } from './api.js';
+import { fetchApi, API_BASE_URL } from './api.js';
 import { showNotification, formatarMoneda, formatearFecha } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tableContainer = document.getElementById('data-table');
     const mainContent = document.getElementById('details-main-content');
     const skeletonLoader = document.getElementById('skeleton-table-loader');
+    const downloadExcelButton = document.getElementById('download-excel-button');
 
     // --- Configuración Botón "Volver" ---
     // --- LÓGICA FINAL Y ROBUSTA PARA EL BOTÓN "VOLVER" ---
@@ -34,12 +35,62 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     } catch (e) {
         console.error("Error al leer el rango de fechas del sessionStorage:", e);
-        // Si hay cualquier error, volvemos sin parámetros como medida de seguridad.
+        // Si hay cualquier error, volvevemos sin parámetros como medida de seguridad.
         backLink.href = './test.php';
     }
 
-    // --- ALMACENAR DATOS GLOBALES (para el acordeón) ---
+    // --- ALMACENAR DATOS GLOBALES ---
     let fullDataFromAPI = [];
+    let searchedIds = []; // Variable para guardar los IDs buscados
+
+    // --- Descargar Excel ---
+    const downloadExcel = async () => {
+        if (searchedIds.length === 0) {
+            showNotification('No hay IDs de factura para descargar.', 'warning');
+            return;
+        }
+
+        downloadExcelButton.disabled = true;
+        downloadExcelButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Descargando...';
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/reportes/buscar-facturas/descargar-excel`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: searchedIds })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ message: 'Error desconocido al descargar el archivo.' }));
+                throw new Error(errorData.message);
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            
+            const timestamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
+            a.download = `Reporte_Facturas_Buscadas_${timestamp}.xlsx`;
+            
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            showNotification('El reporte de facturas buscadas se ha descargado correctamente.', 'success');
+
+        } catch (error) {
+            showNotification(`Error al descargar el reporte: ${error.message}`, 'error');
+        } finally {
+            downloadExcelButton.disabled = false;
+            downloadExcelButton.innerHTML = 'Descargar Excel';
+        }
+    };
+
+    // --- Event Listener para el botón de descarga ---
+    downloadExcelButton.addEventListener('click', downloadExcel);
 
     // --- Funciones de Renderizado (AHORA IGUAL A DETAILS.JS) ---
     function renderTable(resumenes) {
@@ -168,6 +219,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const searchRequest = JSON.parse(searchRequestRaw);
         sessionStorage.removeItem('searchRequest');
         
+        searchedIds = searchRequest.ids; // Guardar IDs para la descarga
+
         mainContent.style.display = 'none';
         skeletonLoader.style.display = 'block';
 
@@ -175,7 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await fetchApi('/reportes/buscar-facturas', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ids: searchRequest.ids })
+                body: JSON.stringify({ ids: searchedIds })
             });
             
             if (!result.success) throw new Error(result.message);
@@ -198,6 +251,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if(numFacturasEncontradas > 0) {
                 renderTable(resumenesEncontrados);
                 mainContent.style.display = 'block';
+                downloadExcelButton.style.display = 'block'; // Mostrar el botón
             } else {
                  showNotification('No se encontraron facturas con los IDs proporcionados.', 'info');
             }
